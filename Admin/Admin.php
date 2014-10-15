@@ -2816,4 +2816,9 @@ abstract class Admin implements AdminInterface, DomainObjectInterface
 
         return $this->getRequest()->getSession()->get(sprintf("%s.list_mode", $this->getCode()), 'list');
     }
+
+    public function getBaseRole()
+    {
+        return $this->securityHandler->getBaseRole($this);
+    }
 }

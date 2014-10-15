@@ -999,6 +999,36 @@ class CRUDController extends Controller
         return is_array($aclUsers) ? new \ArrayIterator($aclUsers) : $aclUsers;
     }
 
+    protected function getAclRoles()
+    {
+        $aclRoles = array();
+        $roleHierarchy = $this->container->getParameter('security.role_hierarchy.roles');
+        $pool = $this->container->get('sonata.admin.pool');
+
+        foreach ($pool->getAdminServiceIds() as $id) {
+            try {
+                $admin = $pool->getInstance($id);
+            } catch (\Exception $e) {
+                continue;
+            }
+
+            $baseRole = $admin->getBaseRole();
+            foreach ($admin->getSecurityInformation() as $role => $permissions) {
+                $role = sprintf($baseRole, $role);
+                $aclRoles[] = $role;
+            }
+        }
+
+        foreach ($roleHierarchy as $name => $roles) {
+            $aclRoles[] = $name;
+            $aclRoles = array_merge($aclRoles, $roles);
+        }
+
+        $aclRoles = array_unique($aclRoles);
+
+        return is_array($aclRoles) ? new \ArrayIterator($aclRoles) : $aclRoles;
+    }
+
     /**
      * Returns the Response object associated to the acl action
      *
@@ -1009,7 +1039,7 @@ class CRUDController extends Controller
      * @throws AccessDeniedException If access is not granted.
      * @throws NotFoundHttpException If the object does not exist or the ACL is not enabled
      */
-    public function aclAction($id = null)
+    public function aclAction(Request $request, $id = null)
     {
         if (!$this->admin->isAclEnabled()) {
             throw new NotFoundHttpException('ACL are not enabled for this admin');
@@ -1029,24 +1059,31 @@ class CRUDController extends Controller
 
         $this->admin->setSubject($object);
         $aclUsers = $this->getAclUsers();
+        $aclRoles = $this->getAclRoles();
 
         $adminObjectAclManipulator = $this->get('sonata.admin.object.manipulator.acl.admin');
         $adminObjectAclData = new AdminObjectAclData(
             $this->admin,
             $object,
             $aclUsers,
+            $aclRoles,
             $adminObjectAclManipulator->getMaskBuilderClass()
         );
 
-        $form = $adminObjectAclManipulator->createForm($adminObjectAclData);
+        $aclUsersForm = $adminObjectAclManipulator->createForm($adminObjectAclData, $aclUsers);
+        $aclRolesForm = $adminObjectAclManipulator->createForm($adminObjectAclData, $aclRoles);
 
-        $request = $this->getRequest();
         if ($request->getMethod() === 'POST') {
-            $form->submit($request);
+            $aclUsersForm->submit($request);
+            $aclRolesForm->submit($request);
 
-            if ($form->isValid()) {
-                $adminObjectAclManipulator->updateAcl($adminObjectAclData);
+            if ($aclUsersForm->isValid()) {
+                $adminObjectAclManipulator->updateAcl($adminObjectAclData, $aclUsers, $aclUsersForm);
+            } else if ($aclRolesForm->isValid()) {
+                $adminObjectAclManipulator->updateAcl($adminObjectAclData, $aclRoles, $aclRolesForm);
+            }
 
+            if ($aclUsersForm->isValid() || $aclRolesForm->isValid()) {
                 $this->addFlash('sonata_flash_success', 'flash_acl_edit_success');
 
                 return new RedirectResponse($this->admin->generateObjectUrl('acl', $object));
@@ -1054,11 +1091,13 @@ class CRUDController extends Controller
         }
 
         return $this->render($this->admin->getTemplate('acl'), array(
-            'action'      => 'acl',
-            'permissions' => $adminObjectAclData->getUserPermissions(),
-            'object'      => $object,
-            'users'       => $aclUsers,
-            'form'        => $form->createView()
+            'action'        => 'acl',
+            'permissions'   => $adminObjectAclData->getUserPermissions(),
+            'object'        => $object,
+            'users'         => $aclUsers,
+            'roles'         => $aclRoles,
+            'aclUsersForm'  => $aclUsersForm->createView(),
+            'aclRolesForm'  => $aclRolesForm->createView(),
         ));
     }
 

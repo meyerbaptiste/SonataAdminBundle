@@ -40,13 +40,21 @@ class AdminObjectAclData
      */
     protected $aclUsers;
     /**
+     * @var array Roles to set ACL for
+     */
+    protected $aclRoles;
+    /**
      * @var array Cache of masks
      */
     protected $masks;
     /**
      * @var \Symfony\Component\Form\Form
      */
-    protected $form;
+    protected $aclUsersForm;
+    /**
+     * @var \Symfony\Component\Form\Form
+     */
+    protected $aclRolesForm;
     /**
      * @var \Symfony\Component\Security\Acl\Domain\Acl
      */
@@ -74,13 +82,20 @@ class AdminObjectAclData
      * @param \Sonata\AdminBundle\Admin\AdminInterface $admin
      * @param mixed                                    $object
      * @param \Traversable                             $aclUsers
+     * @param \Traversable                             $aclRoles
      * @param string                                   $maskBuilderClass
      */
-    public function __construct(AdminInterface $admin, $object, \Traversable $aclUsers, $maskBuilderClass)
-    {
+    public function __construct(
+        AdminInterface $admin,
+        $object,
+        \Traversable $aclUsers,
+        \Traversable $aclRoles,
+        $maskBuilderClass
+    ) {
         $this->admin = $admin;
         $this->object = $object;
         $this->aclUsers = $aclUsers;
+        $this->aclRoles = $aclRoles;
         $this->maskBuilderClass = $maskBuilderClass;
 
         $this->updateMasks();
@@ -114,6 +129,16 @@ class AdminObjectAclData
     public function getAclUsers()
     {
         return $this->aclUsers;
+    }
+
+    /**
+     * Gets ACL roles
+     *
+     * @return array
+     */
+    public function getAclRoles()
+    {
+        return $this->aclRoles;
     }
 
     /**
@@ -157,7 +182,7 @@ class AdminObjectAclData
      */
     public function setForm(Form $form)
     {
-        $this->form = $form;
+        $this->aclUsersForm = $form;
 
         return $this;
     }
@@ -169,7 +194,31 @@ class AdminObjectAclData
      */
     public function getForm()
     {
-        return $this->form;
+        return $this->aclUsersForm;
+    }
+
+    public function setAclUsersForm(Form $aclUsersForm)
+    {
+        $this->aclUsersForm = $aclUsersForm;
+
+        return $this;
+    }
+
+    public function getAclUsersForm()
+    {
+        return $this->aclUsersForm;
+    }
+
+    public function setAclRolesForm(Form $aclRolesForm)
+    {
+        $this->aclRolesForm = $aclRolesForm;
+
+        return $this;
+    }
+
+    public function getAclRolesForm()
+    {
+        return $this->aclRolesForm;
     }
 
     /**
@@ -222,5 +271,10 @@ class AdminObjectAclData
     public function getSecurityHandler()
     {
         return $this->admin->getSecurityHandler();
+    }
+
+    public function getSecurityInformation()
+    {
+        return $this->admin->getSecurityHandler()->buildSecurityInformation($this->admin);
     }
 }

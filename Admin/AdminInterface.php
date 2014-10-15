@@ -1041,4 +1041,6 @@ interface AdminInterface
      * @return string
      */
     public function getListMode();
+
+    public function getBaseRole();
 }

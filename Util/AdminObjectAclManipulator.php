@@ -11,10 +11,13 @@
 
 namespace Sonata\AdminBundle\Util;
 
+use Symfony\Component\Form\Form;
 use Symfony\Component\Form\FormFactoryInterface;
 use Symfony\Component\Security\Acl\Domain\ObjectIdentity;
+use Symfony\Component\Security\Acl\Domain\RoleSecurityIdentity;
 use Symfony\Component\Security\Acl\Exception\NoAceFoundException;
 use Symfony\Component\Security\Acl\Domain\UserSecurityIdentity;
+use Symfony\Component\Security\Core\User\UserInterface;
 
 /**
  * A manipulator for updating ACL related to an object.
@@ -52,14 +55,12 @@ class AdminObjectAclManipulator
         return $this->maskBuilderClass;
     }
 
-    /**
-     * Gets the form
-     *
-     * @param  \Sonata\AdminBundle\Util\AdminObjectAclData $data
-     * @return \Symfony\Component\Form\Form
-     */
-    public function createForm(AdminObjectAclData $data)
+    public function createForm(AdminObjectAclData $data, \Traversable $aclValues = null)
     {
+        if (null === $aclValues) {
+            $aclValues = $data->getAclUsers();
+        }
+
         // Retrieve object identity
         $objectIdentity = ObjectIdentity::fromDomainObject($data->getObject());
         $acl = $data->getSecurityHandler()->getObjectAcl($objectIdentity);
@@ -70,11 +71,12 @@ class AdminObjectAclManipulator
         $data->setAcl($acl);
 
         $masks = $data->getMasks();
+        $securityInformation = $data->getSecurityInformation();
 
         // Create a form to set ACL
         $formBuilder = $this->formFactory->createBuilder('form');
-        foreach ($data->getAclUsers() as $aclUser) {
-            $securityIdentity = UserSecurityIdentity::fromAccount($aclUser);
+        foreach ($aclValues as $aclValue) {
+            $securityIdentity = $this->getSecurityIdentity($aclValue);
 
             foreach ($data->getUserPermissions() as $permission) {
                 try {
@@ -83,7 +85,22 @@ class AdminObjectAclManipulator
                     $checked = false;
                 }
 
-                $formBuilder->add($aclUser->getId() . $permission, 'checkbox', array('required' => false, 'data' => $checked));
+                $attr = array();
+                $disabled = false;
+
+                if (
+                    isset($securityInformation[(string) $aclValue])
+                    && array_search($permission, $securityInformation[(string) $aclValue]) !== false
+                ) {
+                    $attr['disabled'] = 'disabled';
+                    $disabled = true;
+                }
+
+                $formBuilder->add(
+                    $this->getChildFormName($aclValue, $permission),
+                    'checkbox',
+                    array('required' => false, 'data' => $checked, 'disabled' => $disabled, 'attr' => $attr)
+                );
             }
         }
 
@@ -98,14 +115,19 @@ class AdminObjectAclManipulator
      *
      * @param \Sonata\AdminBundle\Util\AdminObjectAclData $data
      */
-    public function updateAcl(AdminObjectAclData $data)
+    public function updateAcl(AdminObjectAclData $data, \Traversable $aclValues = null, Form $aclForm = null)
     {
-        foreach ($data->getAclUsers() as $aclUser) {
-            $securityIdentity = UserSecurityIdentity::fromAccount($aclUser);
+        if (null === $aclValues || null === $aclForm) {
+            $aclValues = $data->getAclUsers();
+            $aclForm = $data->getAclUsersForm();
+        }
+
+        foreach ($aclValues as $aclValue) {
+            $securityIdentity = $this->getSecurityIdentity($aclValue);
 
             $maskBuilder = new $this->maskBuilderClass();
             foreach ($data->getUserPermissions() as $permission) {
-                if ($data->getForm()->get($aclUser->getId() . $permission)->getData()) {
+                if ($aclForm->get($this->getChildFormName($aclValue, $permission))->getData()) {
                     $maskBuilder->add($permission);
                 }
             }
@@ -142,5 +164,18 @@ class AdminObjectAclManipulator
         }
 
         $data->getSecurityHandler()->updateAcl($acl);
+    }
+
+    protected function getChildFormName($aclValue, $permission)
+    {
+        return sprintf('%s_%s', str_replace(' ', '_', (string) $aclValue), $permission);
+    }
+
+    protected function getSecurityIdentity($aclValue)
+    {
+        return ($aclValue instanceof UserInterface)
+            ? UserSecurityIdentity::fromAccount($aclValue)
+            : new RoleSecurityIdentity($aclValue)
+        ;
     }
 }
